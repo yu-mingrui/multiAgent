@@ -1,33 +1,77 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Header
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-import sys
 import uuid
-from pathlib import Path
-
 
 from Director import graph
 import uvicorn
 
 app = FastAPI()
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
 class DirectorRequest(BaseModel):
     query: str
+    user_id: str | None = None
+    session_id: str | None = None
+
+
+def build_thread_id(user_id: str | None, session_id: str | None) -> str:
+    if user_id and session_id:
+        return f"user:{user_id}:session:{session_id}"
+    if user_id:
+        return f"user:{user_id}"
+    if session_id:
+        return f"session:{session_id}"
+    return str(uuid.uuid4())
+
 
 @app.post("/api/director")
-def director(request: DirectorRequest):
-    config = {"configurable": {"thread_id": str(uuid.uuid4())}}
+def director(
+    request: DirectorRequest,
+    x_user_id: str | None = Header(default=None, alias="X-User-Id"),
+    x_session_id: str | None = Header(default=None, alias="X-Session-Id"),
+):
+    user_id = x_user_id or request.user_id
+    session_id = x_session_id or request.session_id
+
+    thread_id = build_thread_id(user_id, session_id)
+    config = {"configurable": {"thread_id": thread_id}}
     state = {"messages": [request.query]}
-    result = graph.invoke(state, config, stream_mode="values")
 
+    try:
+        result = graph.invoke(state, config, stream_mode="values")
+    except Exception as exc:
+        error_message = str(exc)
+        return {
+            "query": request.query,
+            "response": f"模型调用失败：{error_message}",
+            "user_id": user_id,
+            "session_id": session_id,
+            "thread_id": thread_id,
+            "error": "model_request_failed",
+        }
+    print(">>>>result", result)
     response_text = None
-    if isinstance(result, dict) and "messages" in result and result["messages"]:
-        last_message = result["messages"][-1]
-        response_text = getattr(last_message, "content", str(last_message))
+    last_message = result["messages"][-1]
+    response_text = getattr(last_message, "content") 
 
-    return {"query": request.query, "response": response_text}
+    return {
+        "query": request.query,
+        "response": response_text,
+        "user_id": user_id,
+        "session_id": session_id,
+        "thread_id": thread_id,
+    }
 
-#curl -X POST "http://127.0.0.1:8001/api/director" -H "Content-Type: application/json" -d "{\"query\":\"做一个从康桥玥棠去二七万达的地规划路线\"}"
 
 if __name__ == "__main__":
     # Use import string so the reloader can import the app module correctly

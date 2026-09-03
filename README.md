@@ -47,6 +47,8 @@ pip install -r requirements.txt
 
 高德地图 MCP 服务由 `npx` 在运行时调用，因此需要确保 Node.js/npm 已加入 PATH。
 
+旅游路线节点会先通过 `maps_geo` 将起点和终点解析为经纬度，再调用高德路线规划工具（默认由模型选择驾车、步行或公交方案）。MCP 工具使用异步接口，travel 子 agent 关闭了检查点继承；外层 LangGraph 仍使用 Redis 保存会话状态。
+
 ## 配置环境变量
 
 在项目根目录创建 `.env` 文件。不要把真实 `.env` 文件上传到 Git，也不要将真实 Key 写入 README、代码或示例文件。
@@ -103,6 +105,16 @@ python CoupletRetraval.py
 python DirectorServer.py
 ```
 
+直接测试路线规划：
+
+```powershell
+python Director.py
+```
+
+示例输入：`从XXX到郑州二七万达的路线`
+
+> 运行完整工作流或 API 前，请先启动 Redis 并配置 `REDIS_URL`。路线规划还需要配置有效的 `AMAP_MAPS_API_KEY`，且 `npx.cmd` 必须可以在终端中执行。
+
 ## 启动 API 服务
 
 ```powershell
@@ -116,15 +128,18 @@ python api.py
 ```powershell
 curl.exe -X POST "http://127.0.0.1:8001/api/director" `
   -H "Content-Type: application/json" `
-  -d '{"query":"请帮我讲一个笑话"}'
+  -d '{"query":"从XXX到郑州二七万达的路线","user_id":"u-1","session_id":"s-1"}'
 ```
 
 接口返回示例：
 
 ```json
 {
-  "query": "请帮我讲一个笑话",
-  "response": "..."
+  "query": "从XXX到郑州二七万达的路线",
+  "response": "驾车约6.1公里，预计25分钟，具体路线以实时路况为准。",
+  "user_id": "u-1",
+  "session_id": "s-1",
+  "thread_id": "user:u-1:session:s-1"
 }
 ```
 
@@ -133,3 +148,4 @@ curl.exe -X POST "http://127.0.0.1:8001/api/director" `
 - `.env` 已加入 `.gitignore`，不要使用 `git add -f .env` 强制提交。
 - 如果 API Key 曾经出现在聊天记录、日志、截图或公开仓库中，应及时在对应平台轮换。
 - Redis 密码当前用于本地测试；生产环境请使用独立密码，并通过环境变量或密钥管理服务注入。
+- 若路线规划失败，请优先检查 `AMAP_MAPS_API_KEY`、Node.js/npm PATH 和 Redis 服务状态。
