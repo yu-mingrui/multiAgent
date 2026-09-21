@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MultiAgent Chat</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <main class="app-shell">
+    <aside class="sidebar">
+      <div class="brand-mark">M</div>
+      <div>
+        <p class="eyebrow">MULTIAGENT</p>
+        <h1>对话工作台</h1>
+      </div>
+      <button class="new-chat" id="new-chat" type="button"><span>＋</span> 新建会话</button>
+      <section class="settings-panel" aria-label="连接配置">
+        <div class="section-heading">
+          <span>连接配置</span>
+          <span class="status-dot" id="status-dot"></span>
+        </div>
+        <label>接口地址<input id="endpoint" value="http://127.0.0.1:8001/api/director"></label>
+        <label>用户 ID<input id="user-id" value="demo-user"></label>
+        <label>会话 ID<input id="session-id"></label>
+        <p class="hint">会话 ID 用于让 Redis 检查点保留多轮上下文。</p>
+      </section>
+      <section class="profile-card" aria-label="当前用户">
+        <div class="profile-avatar" id="profile-avatar">D</div>
+        <div class="profile-copy">
+          <p class="profile-caption">当前用户</p>
+          <strong id="profile-user">demo-user</strong>
+          <span id="profile-session">未建立会话</span>
+        </div>
+        <span class="profile-online" title="在线"></span>
+      </section>
+      <div class="sidebar-footer"><span class="pulse"></span> SSE 流式连接就绪</div>
+    </aside>
+
+    <section class="chat-panel">
+      <header class="chat-header">
+        <div>
+          <p class="eyebrow">LIVE SESSION</p>
+          <h2>和你的多智能体助手聊聊</h2>
+        </div>
+        <div class="header-meta"><span id="thread-label">尚未发送消息</span><button id="clear-chat" type="button" title="清空消息">清空</button></div>
+      </header>
+
+      <div class="message-list" id="message-list" aria-live="polite">
+        <div class="welcome-block" id="welcome-block">
+          <div class="welcome-number">01</div>
+          <h3>把问题交给合适的专家。</h3>
+          <p>试试旅行路线、对联创作或一个轻松的笑话。你会实时看到工作流如何推进。</p>
+          <div class="suggestions">
+            <button type="button" data-prompt="帮我规划郑州一日游路线">规划一次旅行</button>
+            <button type="button" data-prompt="上联：春风得意马蹄疾">写一副对联</button>
+            <button type="button" data-prompt="讲一个关于程序员的笑话">讲个笑话</button>
+          </div>
+        </div>
+      </div>
+
+      <form class="composer" id="composer">
+        <textarea id="query" rows="1" placeholder="输入你的问题..." aria-label="问题"></textarea>
+        <button class="send-button" id="send-button" type="submit" title="发送"><span>发送</span><strong>↗</strong></button>
+      </form>
+      <p class="composer-note">Enter 发送 · Shift + Enter 换行</p>
+    </section>
+
+    <aside class="event-panel history-panel">
+      <div class="event-heading"><div><p class="eyebrow">ARCHIVE</p><h2>历史会话</h2></div><span id="history-count">0 个会话</span></div>
+      <div class="history-list" id="history-list"><div class="empty-history">暂无历史会话。</div></div>
+    </aside>
+  </main>
+  <script src="./app.js?v=2"></script>
+</body>
+</html>

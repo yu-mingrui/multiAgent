@@ -39,8 +39,13 @@ with open(resource_path, "r", encoding="utf-8") as f:
             # print(line)
             lines.append(line)
 
-redis_vector_store = RedisVectorStore.from_texts(
-    texts=lines,
-    embedding=embedding_model,
-    config=config,
-)
+# DashScope/OpenAI 兼容 embedding API 的单次 batch 上限是 25，
+# 因此需要按批次写入，不要一次性把全部 CSV 文本一起送入模型。
+BATCH_SIZE = 25
+for index in range(0, len(lines), BATCH_SIZE):
+    batch = lines[index:index + BATCH_SIZE]
+    RedisVectorStore.from_texts(
+        texts=batch,
+        embedding=embedding_model,
+        config=config,
+    )

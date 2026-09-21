@@ -19,6 +19,10 @@
 ├── CoupletRetraval.py     # 对联检索测试脚本
 ├── docker-compose.yml     # Redis Stack 服务配置
 ├── requirements.txt       # Python 依赖
+├── frontend/              # 聊天工作台前端
+│   ├── index.html
+│   ├── app.js
+│   └── styles.css
 └── resource/test.csv      # 对联数据
 ```
 
@@ -47,7 +51,7 @@ pip install -r requirements.txt
 
 高德地图 MCP 服务由 `npx` 在运行时调用，因此需要确保 Node.js/npm 已加入 PATH。
 
-旅游路线节点会先通过 `maps_geo` 将起点和终点解析为经纬度，再调用高德路线规划工具（默认由模型选择驾车、步行或公交方案）。MCP 工具使用异步接口，travel 子 agent 关闭了检查点继承；外层 LangGraph 仍使用 Redis 保存会话状态。
+旅游路线节点会先通过 `maps_geo` 将起点和终点解析为经纬度，再调用高德路线规划工具（默认由模型选择驾车、步行或公交方案）。MCP 工具使用异步接口，travel 节点和外层 LangGraph 使用异步执行；其它业务节点可以保持同步。外层 LangGraph 使用 Redis 保存会话状态。
 
 ## 配置环境变量
 
@@ -123,6 +127,8 @@ python api.py
 
 服务默认监听 `http://127.0.0.1:8001`。
 
+API 使用异步 LangGraph 流式执行，并通过 Redis 保存 checkpoint。服务启动时会初始化异步 Redis checkpointer；请确保 Redis 已启动且 `REDIS_URL` 可用。
+
 调用示例：
 
 ```powershell
@@ -131,17 +137,88 @@ curl.exe -X POST "http://127.0.0.1:8001/api/director" `
   -d '{"query":"从XXX到郑州二七万达的路线","user_id":"u-1","session_id":"s-1"}'
 ```
 
-接口返回示例：
+也支持通过请求头传递身份信息，适合前端或跨请求场景：
+
+```powershell
+curl.exe -X POST "http://127.0.0.1:8001/api/director" `
+  -H "Content-Type: application/json" `
+  -H "X-User-Id: u-1" `
+  -H "X-Session-Id: s-1" `
+  -d '{"query":"从XXX到郑州二七万达的路线"}'
+```
+
+接口以 SSE 流式返回，事件类型包括 `answer`、`done` 和 `error`：
+
+```text
+event: answer
+data: {"delta":"驾车约6.1公里，预计25分钟。"}
+
+event: done
+data: {}
+```
+
+### 历史会话接口
+
+历史会话按 `user_id` 保存在 Redis 中。会话标题只使用该会话第一次发送的用户问题，后续消息仅更新回答预览和更新时间。
+
+获取用户的历史会话列表：
+
+```powershell
+curl.exe "http://127.0.0.1:8001/api/sessions?user_id=u-1"
+```
+
+获取某个会话的完整消息：
+
+```powershell
+curl.exe "http://127.0.0.1:8001/api/sessions/s-1?user_id=u-1"
+```
+
+删除某个会话的 checkpoint 和 Redis 索引：
+
+```powershell
+curl.exe -X DELETE "http://127.0.0.1:8001/api/sessions/s-1?user_id=u-1"
+```
+
+返回：
+
+```json
+{"deleted": true, "session_id": "s-1"}
+```
+
+详情接口返回的消息格式如下：
 
 ```json
 {
-  "query": "从XXX到郑州二七万达的路线",
-  "response": "驾车约6.1公里，预计25分钟，具体路线以实时路况为准。",
-  "user_id": "u-1",
   "session_id": "s-1",
-  "thread_id": "user:u-1:session:s-1"
+  "messages": [
+    {"role": "user", "content": "讲个笑话"},
+    {"role": "assistant", "content": "程序员的笑话"}
+  ]
 }
 ```
+
+> 说明：会话标题只保留第一次发言的用户问题；后续消息仅更新预览和更新时间，确保历史列表中的标题稳定不变。
+
+## 启动聊天测试前端
+
+前端由 FastAPI 直接托管，不需要单独启动静态文件服务：
+
+```powershell
+python api.py
+```
+
+然后打开 `http://127.0.0.1:8001/frontend/`。页面会用 `fetch` 读取 `/api/director` 的 SSE 流，并在右侧显示 Redis 中保存的历史会话。点击历史会话可以加载完整聊天记录，并继续在该会话中对话。
+
+前端右侧历史会话依赖当前用户 ID；切换用户 ID 后会加载对应用户的会话列表。点击“新建会话”只创建新的会话 ID，不会删除已有历史。历史会话列表支持点击加载和删除，删除后会同步清理 Redis 中的会话索引和 checkpoint 数据。
+
+## 运行测试
+
+```powershell
+python -m unittest tests.test_api
+node --check frontend/app.js
+```
+
+测试覆盖 API SSE 流、用户和会话身份、历史会话列表、历史详情、标题保留和工作流路由。
 
 ## 安全说明
 
