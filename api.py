@@ -16,6 +16,7 @@ import uvicorn
 import redis.asyncio as aioredis
 
 session_store = None
+SESSION_TTL_SECONDS = 30 * 24 * 60 * 60
 
 
 # 管理应用启动和关闭时的 Redis 资源与检查点生命周期。
@@ -84,6 +85,14 @@ def extract_latest_answer(chunk, start_index: int) -> str | None:
 def session_index_key(user_id: str) -> str:
     return f"director:sessions:{user_id}"
 
+
+async def refresh_session_index_ttl(user_id: str):
+    if session_store is None:
+        return
+    expire = getattr(session_store, "expire", None)
+    if expire is not None:
+        await expire(session_index_key(user_id), SESSION_TTL_SECONDS)
+
 # 将 LangChain 消息对象转换成前端展示的历史记录结构。
 def message_to_history_item(message):
     content = getattr(message, "content", message)
@@ -107,6 +116,7 @@ async def save_session_metadata(user_id: str, session_id: str, title: str, previ
         "updated_at": __import__("datetime").datetime.now().isoformat(timespec="seconds"),
     }
     await session_store.hset(session_index_key(user_id), session_id, json.dumps(metadata, ensure_ascii=False))
+    await refresh_session_index_ttl(user_id)
 
 
 @app.get("/api/sessions")
@@ -114,7 +124,10 @@ async def save_session_metadata(user_id: str, session_id: str, title: str, previ
 async def list_sessions(user_id: str):
     if not user_id or session_store is None:
         return {"sessions": []}
-    records = await session_store.hvals(session_index_key(user_id))
+    index_key = session_index_key(user_id)
+    records = await session_store.hvals(index_key)
+    if records:
+        await refresh_session_index_ttl(user_id)
     sessions = [json.loads(record) for record in records]
     sessions.sort(key=lambda item: item.get("updated_at", ""), reverse=True)
     return {"sessions": sessions}
@@ -125,6 +138,8 @@ async def list_sessions(user_id: str):
 async def get_session(session_id: str, user_id: str):
     if not user_id:
         return {"session_id": session_id, "messages": []}
+    if session_store is not None:
+        await refresh_session_index_ttl(user_id)
     config = {"configurable": {"thread_id": build_thread_id(user_id, session_id)}}
     checkpoint = await graph.aget_state(config)
     messages = [message_to_history_item(message) for message in checkpoint.values.get("messages", [])]

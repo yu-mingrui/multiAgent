@@ -372,7 +372,13 @@ builder.add_edge("joke_node", "supervisor_node")
 builder.add_edge("other_node", "supervisor_node")
 redis_url = os.getenv("REDIS_URL")
 # 创建 RedisSaver
-checkpointer = AsyncRedisSaver(redis_url=redis_url)
+checkpointer = AsyncRedisSaver(
+    redis_url=redis_url,
+    ttl={
+        "default_ttl": 30 * 24 * 60,
+        "refresh_on_read": True,
+    },
+)
 #编译图
 graph = builder.compile(checkpointer=checkpointer)
 
